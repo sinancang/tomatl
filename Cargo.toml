@@ -6,4 +6,6 @@ edition = "2024"
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
 indicatif = "0.17"
+colored      = "2.0"
+figlet-rs    = "0.1"
 notify-rust = "4.8"
