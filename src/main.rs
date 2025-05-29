@@ -1,8 +1,9 @@
 use clap::Parser;
-use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use colored::Colorize;
 use figlet_rs::FIGfont;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use notify_rust::Notification;
+use rodio::{Decoder, OutputStream, Sink};
 use std::{thread, time::Duration};
 
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -16,7 +17,7 @@ impl Mode {
     fn as_str(&self) -> &'static str {
         match self {
             Mode::Focus => "focus",
-            Mode::Rest  => "rest",
+            Mode::Rest => "rest",
         }
     }
 }
@@ -25,7 +26,7 @@ impl Mode {
 #[command(name = "tomatl-cli", about = "Manage focus and rest sessions")]
 struct Cli {
     mode: Mode,
-    minutes: f32
+    minutes: f32,
 }
 
 fn main() {
@@ -41,9 +42,13 @@ fn main() {
     // 2) Subheader with emoji
     println!(
         "{}\n",
-        format!("Starting a {} session for {} minutes ⏱️", mode.green(), minutes)
-            .magenta()
-            .bold()
+        format!(
+            "Starting a {} session for {} minutes ⏱️",
+            mode.green(),
+            minutes
+        )
+        .magenta()
+        .bold()
     );
 
     // 3) Spinner + progress bar
@@ -53,7 +58,7 @@ fn main() {
     let spinner = mp.add(ProgressBar::new_spinner());
     spinner.set_style(
         ProgressStyle::default_spinner()
-            .tick_strings(&["⣾","⣽","⣻","⢿","⡿","⣟","⣯","⣷"])
+            .tick_strings(&["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"])
             .template("{spinner:.blue} {msg}")
             .unwrap(),
     );
@@ -62,11 +67,9 @@ fn main() {
 
     let pb = mp.add(ProgressBar::new(total_secs));
     pb.set_style(
-        ProgressStyle::with_template(
-            "{bar:40.cyan/blue} {pos:>3}/{len:3} sec • ETA {eta_precise}",
-        )
-        .unwrap()
-        .progress_chars("█▇▆▅▄▃▂▁ "),
+        ProgressStyle::with_template("{bar:40.cyan/blue} {pos:>3}/{len:3} sec • ETA {eta_precise}")
+            .unwrap()
+            .progress_chars("█▇▆▅▄▃▂▁ "),
     );
 
     // 4) Run!
@@ -83,6 +86,23 @@ fn main() {
         .body(&format!("Your {} session is complete.", mode))
         .show()
         .unwrap();
+
+    // 6) Play sound
+    if let Err(e) = play_sound() {
+        eprintln!("Error playing sound: {}", e);
+    }
 }
 
+fn play_sound() -> Result<(), Box<dyn std::error::Error>> {
+    let (_stream, stream_handle) = OutputStream::try_default()?;
 
+    let sink = Sink::try_new(&stream_handle)?;
+
+    static SOUND: &[u8] = include_bytes!("../assets/sound.mp3");
+    let cursor = std::io::Cursor::new(SOUND);
+    let source = Decoder::new(cursor)?;
+
+    sink.append(source);
+    sink.sleep_until_end();
+    Ok(())
+}
