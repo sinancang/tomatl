@@ -1,9 +1,11 @@
+use chrono::{DateTime, Utc};
 use clap::Parser;
 use colored::Colorize;
 use figlet_rs::FIGfont;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use notify_rust::Notification;
 use rodio::{Decoder, OutputStream, Sink};
+use rusqlite::{Connection, Result, params};
 use std::{thread, time::Duration};
 
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -29,10 +31,41 @@ struct Cli {
     minutes: f32,
 }
 
-fn main() {
+/// Initializes (or migrates) the database: creates `sessions` table if it doesn't exist.
+fn init_db(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        r#"
+        CREATE TABLE IF NOT EXISTS sessions (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            start_iso      TEXT NOT NULL,
+            minutes        FLOAT NOT NULL
+        );
+        "#,
+    )?;
+    Ok(())
+}
+
+/// Inserts a new focus session into `sessions`.
+/// 
+/// - `start` is the UTC timestamp when the session began.
+/// - `minutes` is the length of that session in.
+fn record_session(conn: &Connection, start: DateTime<Utc>, minutes: f32) -> Result<()> {
+    let start_iso = start.to_rfc3339(); // e.g. "2025-05-30T14:23:00+00:00"
+    conn.execute(
+        "INSERT INTO sessions (start_iso, minutes) VALUES (?1, ?2)",
+        params![start_iso, minutes],
+    )?;
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    let conn = Connection::open("focus.db")?;
+    init_db(&conn)?;
+    
     let args = Cli::parse();
     let mode = &args.mode.as_str();
     let minutes = args.minutes;
+    let now = Utc::now();
 
     // 1) ASCII-art header
     let font = FIGfont::standard().unwrap();
@@ -91,7 +124,10 @@ fn main() {
     if let Err(e) = play_sound() {
         eprintln!("Error playing sound: {}", e);
     }
+    record_session(&conn, now, minutes)?;
+    Ok(())
 }
+
 
 fn play_sound() -> Result<(), Box<dyn std::error::Error>> {
     let (_stream, stream_handle) = OutputStream::try_default()?;
